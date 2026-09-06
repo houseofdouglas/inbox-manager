@@ -22,17 +22,31 @@ Everything is identical except one line of configuration.
 | **One Mac** | Same Mac as this checkout | `http://localhost:8080` |
 | **Two Macs** | A second Mac on your network | `http://192.168.1.50:8080` |
 
-Two Macs is the better arrangement if you have a spare machine: classification
-is GPU-hungry, and a 26B model on the Mac you are working on will make itself
-felt. Start on one and move later — changing that one line is the entire
-migration. No re-auth, no re-setup, no database changes.
+**The reason for two Macs is memory, not speed.** The model wants to take as
+much as it can get — the reference model is ~15 GB of weights plus a prompt
+cache that grows as it works — so it belongs on a machine with at least 24 GB
+that is doing nothing else. That figure is the base configuration of current
+MacBooks, so a recent machine clears it without thinking about it; an older
+16 GB Mac wants a smaller model. Your everyday Mac, which may have less memory
+and is busy being your everyday Mac, just drives Gmail and needs nothing
+special.
+
+If you only have one Mac with enough memory, run both on it and keep
+`BATCH_SIZE` modest. Start on one and move later: changing that one line is the
+entire migration. No re-auth, no re-setup, no database changes.
+
+Splitting *one* model across two machines with something like
+[exo](https://github.com/exo-explore/exo) is a tempting third option and was
+tried here — the contention between the machines made it slower than either
+approach above. Two independent machines, one job each.
 
 ## What you need
 
 - **A Mac.** macOS only: scheduling uses launchd and alerts use `osascript`.
 - **A Google account** whose mail you want organized.
-- **A model host**, which is either this Mac or another one — Apple Silicon,
-  32 GB of unified memory, ~15 GB free disk. See [host/README.md](host/README.md).
+- **A model host** — this Mac or another one, Apple Silicon with at least
+  24 GB of unified memory and ~15 GB free disk. The Mac that drives Gmail has
+  no particular requirements. See [host/README.md](host/README.md).
 - **About 15 minutes**, most of it clicking through Google Cloud Console.
 
 No API key is required. If you would rather use one — Gemini has a generous

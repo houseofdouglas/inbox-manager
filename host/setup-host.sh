@@ -18,7 +18,7 @@ ok "$(sysctl -n hw.model), $(uname -m)"
 
 ram_gb=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 if [ "$ram_gb" -lt "$MIN_RAM_GB" ]; then
-  warn "$ram_gb GB of RAM; $MODEL_ID was validated on ${MIN_RAM_GB} GB."
+  warn "$ram_gb GB of RAM; $MODEL_ID needs about ${MIN_RAM_GB} GB to run comfortably."
   warn "It may still run, but expect Metal out-of-memory errors under load."
   warn "Consider a smaller model — see host/README.md — then re-run with:"
   warn "    echo 'MODEL_ID=\"...\"' > host/config.local.sh"
@@ -62,8 +62,9 @@ else
 fi
 
 "$UV" pip install --quiet --python "$VENV_DIR/bin/python" \
-  "mlx-lm==$MLX_LM_VERSION" "huggingface_hub[hf_transfer]"
-ok "mlx-lm $MLX_LM_VERSION installed"
+  "$MLX_LM_SPEC" "huggingface_hub[hf_transfer]"
+installed=$("$VENV_DIR/bin/python" -c "import mlx_lm; print(mlx_lm.__version__)" 2>/dev/null || echo "?")
+ok "mlx-lm $installed installed ($MLX_LM_SPEC)"
 
 say "4/5  Model"
 

@@ -12,8 +12,13 @@ nothing else changes.
 ## What you need
 
 - Apple Silicon (M-series). MLX does not run on Intel Macs.
-- 32 GB of unified memory for the reference model. Less is possible with a
-  smaller model — see *Using a different model* below.
+- At least 24 GB of unified memory — the base configuration of current
+  MacBooks, so any recent machine qualifies. Memory is the whole reason the
+  model gets its own machine: ~15 GB of weights plus a prompt cache that grows
+  while it works. More memory buys bigger batches rather than immunity, though:
+  the reference host has 32 GB and still hit a Metal out-of-memory at
+  `BATCH_SIZE=500`. On an older 16 GB Mac, use a smaller model (see *Using a
+  different model*).
 - ~25 GB of free disk (the reference model is about 15 GB).
 - [uv](https://docs.astral.sh/uv/): `brew install uv`
 
@@ -137,6 +142,14 @@ tracked file:
 ```bash
 echo 'MODEL_ID="mlx-community/some-smaller-model"' > host/config.local.sh
 ./host/setup-host.sh && ./host/install-service.sh
+```
+
+`setup-host.sh` installs `mlx-lm>=0.31.3` — a floor rather than a pin, so fixes
+arrive on their own. 0.31.3 is the version this setup was verified against; if
+a newer release ever misbehaves, pin it exactly:
+
+```bash
+echo 'MLX_LM_SPEC="mlx-lm==0.31.3"' >> host/config.local.sh
 ```
 
 Then set `LLAMA_MODEL` in inbox-manager's `.env` to match, since the classifier

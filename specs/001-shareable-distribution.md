@@ -1,8 +1,8 @@
 # Spec: Shareable Distribution & Guided Setup
 
-**Status**: DRAFT
+**Status**: IMPLEMENTED
 **Created**: 2026-09-05
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-05 (all open questions resolved)
 **Related Specs**: none
 
 ---
@@ -317,7 +317,7 @@ This spec intentionally does not cover:
 | ~~Does the OAuth consent screen need to be Published rather than Testing?~~ | Maintainer | **Resolved 2026-09-05**: yes. The maintainer's consent screen is in production, not a Testing credential. Corroborated by `token.json` — issued 2026-05-18, never rewritten since, and its refresh token still working ~3.5 months later, which a Testing-status app could not do. A new operator's project defaults to Testing, so this is now an explicit setup step (17a/17b) rather than an assumption. |
 | ~~Which model server does the host run, and what flags?~~ | Maintainer | **Resolved 2026-09-05** by inspecting the running reference host: `mlx_lm server` from a uv venv (`~/mlx-env`, CPython 3.12.14, mlx 0.32.1, mlx-lm 0.31.3), wrapped in `caffeinate -dimsu`, under launchd with `KeepAlive`. Captured in Section G. |
 | ~~Should the README recommend `gemma-4-26B-A4B-it-qat-4bit` or stay model-agnostic?~~ | Maintainer | **Resolved 2026-09-05**: ship it as the reference model (15 GB, validated against the classifier prompt) with the model id as a single documented variable for operators with less RAM. |
-| Is a second Mac actually required for acceptable throughput at `BATCH_SIZE=500`, or is one machine fine at smaller batches? The reference host is an M2 Max / 32 GB machine doing nothing else, and it hit a Metal OOM once under that load — sharing a machine with the operator's daily driver may not be comfortable. Affects how strongly the README steers toward two Macs. | Maintainer | |
-| Does `host/setup-host.sh` need to pin `mlx-lm` to 0.31.3, or track latest? Pinning reproduces the verified stack; tracking latest avoids bit-rot. Recommend pinning with a documented upgrade command. | Maintainer | |
-| Should `npm run setup` offer to run a first `classify` on a handful of emails at the end as a smoke test, or stop at printing next steps? | Maintainer | |
-| Keep `newsletters` and the `newsletter-state.json` file in the shared version, or defer it like deal-review? It is code-only and works from empty state, so keeping it is cheap. | Maintainer | Tentatively: keep |
+| ~~How hard should the README steer toward two Macs?~~ | Maintainer | **Resolved 2026-09-05**: frame it as **memory, not speed**. The model should sit on a machine with ≥24 GB doing nothing else; the driving Mac has no requirements. 24 GB is chosen because it is the base configuration of current MacBooks (up from 16 GB), not as a measured minimum. Splitting one model across machines with `exo` was tried and rejected — contention made it slower than either single-host arrangement. |
+| ~~Pin `mlx-lm` or track latest?~~ | Maintainer | **Resolved 2026-09-05**: a floor, not a pin — `mlx-lm>=0.31.3`, overridable to an exact pin via `MLX_LM_SPEC` in `config.local.sh`. Fixes arrive without maintenance; known-too-old versions are still blocked. |
+| ~~Should setup end with a smoke test?~~ | Maintainer | **Resolved 2026-09-05**: yes. Setup classifies 5 real emails with `DRY_RUN` forced true regardless of `.env`, so the run cannot modify the mailbox. It proves Gmail → model host → classification → parsing before setup claims success. Skipped, with guidance, when Gmail is not authorized. |
+| ~~Keep `newsletters` in the shared version?~~ | Maintainer | **Resolved 2026-09-05**: ship it. Code-only, works from empty state, no personal data files; `newsletter-state.json` is git-ignored. Documented in the README command table, including that it sends mail. |

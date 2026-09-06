@@ -2,6 +2,7 @@
 // printed summary. Safe to re-run — every step detects what is already done.
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { readEnv, writeEnv, ENV_PATH } from './lib/env-file.js';
 import {
   checkNode, checkDependencies, checkCredentials, probeModelHost,
@@ -248,6 +249,20 @@ async function step6_processing(current: Record<string, string>): Promise<Record
   return { DIGEST_RECIPIENT: recipient, BATCH_SIZE: batch, DRY_RUN: 'true' };
 }
 
+// Proves the whole chain on real mail before claiming success: Gmail fetch,
+// model host, classification, parsing. DRY_RUN is forced on regardless of what
+// .env says, so this can never modify the mailbox.
+async function smokeTest(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn('npx', ['tsx', 'src/index.ts', 'classify'], {
+      stdio: 'inherit',
+      env: { ...process.env, BATCH_SIZE: '5', DRY_RUN: 'true' },
+    });
+    child.on('error', () => resolve(false));
+    child.on('close', (code) => resolve(code === 0));
+  });
+}
+
 async function main() {
   console.log(bold('\nInbox Manager setup'));
   console.log(dim('  Six steps. Nothing touches your mailbox until you run organize yourself.'));
@@ -296,6 +311,21 @@ async function main() {
     await install();
   } else {
     info('Skipped', 'install it later with: npm run schedule:install');
+  }
+
+  // Only worth running if the pieces it exercises are actually in place.
+  const canSmokeTest = fs.existsSync(TOKEN_PATH) && fs.existsSync(CREDENTIALS_PATH);
+  if (canSmokeTest) {
+    heading('Checking it actually works');
+    console.log(dim('  Classifying 5 real emails. Preview only — nothing in your mailbox'));
+    console.log(dim('  will be touched, whatever DRY_RUN says.\n'));
+    const passed = await smokeTest();
+    console.log(passed
+      ? `\n  ${green('✓')} End to end: Gmail → model → classification.`
+      : `\n  ${yellow('!')} That did not complete. Run npm run doctor to find out why.`);
+  } else {
+    heading('Checking it actually works');
+    info('Skipped', 'Gmail is not authorized yet — run npm run auth, then npm run doctor');
   }
 
   console.log(`\n${bold('  Setup complete. Next, in order:')}`);

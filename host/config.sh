@@ -26,9 +26,11 @@ PORT="${PORT:-8080}"
 # Python virtualenv holding mlx-lm.
 VENV_DIR="${VENV_DIR:-$HOME/mlx-env}"
 
-# Pinned so a fresh install reproduces the verified stack. To move forward,
-# bump this and re-run setup-host.sh.
-MLX_LM_VERSION="${MLX_LM_VERSION:-0.31.3}"
+# A floor, not a pin: 0.31.3 is the version this stack was verified against,
+# and newer is allowed so fixes arrive without maintenance here. If an upgrade
+# ever misbehaves, pin exactly by setting MLX_LM_SPEC="mlx-lm==0.31.3".
+MLX_LM_MIN_VERSION="${MLX_LM_MIN_VERSION:-0.31.3}"
+MLX_LM_SPEC="${MLX_LM_SPEC:-mlx-lm>=$MLX_LM_MIN_VERSION}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 # launchd labels. One prefix drives every job this project installs, so
@@ -41,8 +43,13 @@ SERVICE_LABEL="${SERVICE_LABEL:-$LABEL_PREFIX.mlx-server}"
 LOG_DIR="${LOG_DIR:-$HOME/logs}"
 LOG_PATH="${LOG_PATH:-$LOG_DIR/mlx-server.log}"
 
-# Rough floor for the reference model: ~15 GB of weights plus working memory.
-MIN_RAM_GB="${MIN_RAM_GB:-32}"
+# The whole reason for a separate model host is memory: ~15 GB of weights plus
+# a prompt cache that grows while it works. 24 GB is the threshold because that
+# is the base configuration of current MacBooks (up from 16 GB), so any recent
+# machine clears it — not because 24 is a measured minimum. More memory buys
+# bigger batches, not immunity: the reference host has 32 GB and still hit a
+# Metal OOM at BATCH_SIZE=500.
+MIN_RAM_GB="${MIN_RAM_GB:-24}"
 MIN_FREE_DISK_GB="${MIN_FREE_DISK_GB:-25}"
 
 # --- Watchdog -----------------------------------------------------------
