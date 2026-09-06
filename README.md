@@ -20,7 +20,11 @@ Everything is identical except one line of configuration.
 | | Where the model runs | `LLAMA_BASE_URL` |
 |---|---|---|
 | **One Mac** | Same Mac as this checkout | `http://localhost:8080` |
-| **Two Macs** | A second Mac on your network | `http://192.168.1.50:8080` |
+| **Two machines** | Another machine on your network | `http://192.168.1.50:8080` |
+
+That second machine does not have to be a Mac. If you already run a model
+server anywhere on your network, use it — see [Using a model server you already
+have](#using-a-model-server-you-already-have).
 
 **The reason for two Macs is memory, not speed.** The model wants to take as
 much as it can get — the reference model is ~15 GB of weights plus a prompt
@@ -44,9 +48,11 @@ approach above. Two independent machines, one job each.
 
 - **A Mac.** macOS only: scheduling uses launchd and alerts use `osascript`.
 - **A Google account** whose mail you want organized.
-- **A model host** — this Mac or another one, Apple Silicon with at least
-  24 GB of unified memory and ~15 GB free disk. The Mac that drives Gmail has
-  no particular requirements. See [host/README.md](host/README.md).
+- **Somewhere to run a model.** Either use the included `host/` kit on an
+  Apple Silicon Mac with at least 24 GB of unified memory and ~15 GB free disk
+  (see [host/README.md](host/README.md)), or point it at a model server you
+  already run — any OS, anything OpenAI-compatible. The Mac that drives Gmail
+  has no particular requirements.
 - **About 15 minutes**, most of it clicking through Google Cloud Console.
 
 No API key is required. If you would rather use one — Gemini has a generous
@@ -54,6 +60,11 @@ free tier — setup will offer that instead and you can skip the model host
 entirely.
 
 ## Setup
+
+**0. Already have a model server?** Skip straight to step 2 and point
+`LLAMA_BASE_URL` at it. It does not have to be a Mac, or MLX — anything
+OpenAI-compatible works, on any OS. See
+[Using a model server you already have](#using-a-model-server-you-already-have).
 
 **1. Stand up the model host.** On whichever Mac will run the model:
 
@@ -108,6 +119,48 @@ own app.
 **You will see "Google hasn't verified this app."** That is expected and not a
 mistake. Choose *Advanced → Go to (unsafe)*. The app is one you created minutes
 ago; verification is for apps distributed to strangers.
+
+## Using a model server you already have
+
+The `host/` kit is a convenience, not a requirement. Anything that answers
+these two endpoints will work, on Windows, Linux, or macOS:
+
+- `GET /v1/models` → `{ "data": [{ "id": "..." }] }`
+- `POST /v1/chat/completions` → `{ "choices": [{ "message": { "content": "..." } }] }`
+
+Common servers and their defaults:
+
+| Server | `LLAMA_BASE_URL` |
+|---|---|
+| Ollama | `http://<ip>:11434` |
+| LM Studio | `http://<ip>:1234` |
+| llama.cpp / `mlx_lm.server` | `http://<ip>:8080` |
+| vLLM | `http://<ip>:8000` |
+
+A trailing `/v1` is fine too — Ollama and LM Studio document their endpoints
+that way, and both forms work.
+
+Three things to get right, whatever you run:
+
+1. **It must listen on the network, not just loopback**, and the port must be
+   open in the host's firewall. Ollama, for instance, binds `127.0.0.1` by
+   default and needs `OLLAMA_HOST=0.0.0.0` to be reachable at all.
+2. **Test from the Mac that runs inbox-manager**, not from the host — that is
+   the connection that has to work: `curl http://<ip>:<port>/v1/models`
+3. **Turn off "thinking" if your model does it.** A reasoning preamble costs
+   hundreds of tokens before the answer and overruns the classifier's budget,
+   so classifications come back as truncated JSON. `npm run doctor` detects
+   this and says so. How you disable it depends on the model and server.
+
+Set `LLAMA_MODEL` to whatever `/v1/models` reports. Then run `npm run doctor` —
+it probes both endpoints and tells you which part is unhappy.
+
+Two features in `host/` are macOS-only and simply do not apply: the watchdog,
+and automatic restart of a wedged server. If your host can restart its own
+service over ssh, set `LLAMA_SSH_HOST` and `LLAMA_RESTART_CMD` (for example
+`systemctl --user restart ollama`) to get the same self-healing. Otherwise a
+run that finds the server unable to generate reports it and stops, rather than
+marking your whole inbox as errors.
 
 ## Your first week
 

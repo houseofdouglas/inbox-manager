@@ -40,6 +40,15 @@ export const config = {
     return process.env.LLAMA_SERVICE_LABEL || `${this.launchdLabelPrefix}.mlx-server`;
   },
 
+  // Shell command that restarts the model server, run on the host. The default
+  // is macOS/launchd; a Linux or Windows host must set LLAMA_RESTART_CMD to
+  // whatever restarts its service (e.g. `systemctl --user restart ollama`).
+  // Empty disables automatic restarts entirely.
+  get llamaRestartCmd(): string {
+    if (process.env.LLAMA_RESTART_CMD !== undefined) return process.env.LLAMA_RESTART_CMD;
+    return `launchctl kickstart -k gui/$(id -u)/${this.llamaServiceLabel}`;
+  },
+
   get dailyJobLabel(): string {
     return `${this.launchdLabelPrefix}.inbox-daily`;
   },

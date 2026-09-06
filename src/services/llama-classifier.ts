@@ -12,6 +12,13 @@ interface OpenAIChatResponse {
   };
 }
 
+// Ollama and LM Studio both document their endpoint as ".../v1", and this code
+// appends "/v1/models" itself — so a base URL copied straight from their docs
+// would request "/v1/v1/models" and 404. Accept either form.
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+}
+
 const BATCH_SIZE = 15;
 const CONCURRENCY = 3;
 
@@ -30,7 +37,7 @@ export class LlamaClassifier {
   private model: string;
 
   constructor(baseUrl: string = 'http://localhost:8080', model: string = 'local') {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.baseUrl = normalizeBaseUrl(baseUrl);
     this.model = model;
   }
 

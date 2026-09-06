@@ -1,139 +1,145 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
-## Project Overview
+## What this is
 
-Inbox Manager is an AI-powered Gmail automation tool that classifies and organizes emails using Claude or Gemini AI. It processes large inboxes (30k+ emails) by categorizing emails as marketing, transactional, or personal, then moves them to appropriate Gmail labels.
+An AI-powered Gmail organizer. It classifies mail as marketing, transactional,
+or personal and files it into Gmail labels. Built for inboxes of tens of
+thousands of messages; designed to run unattended on a schedule.
 
-## Development Commands
+It modifies a real mailbox. `DRY_RUN=true` is the default and must stay the
+default. When helping someone set this up, do not flip it to `false` on their
+behalf — that is their decision to make after they have seen classifications
+they trust.
 
-```bash
-# Install dependencies
-npm install
+## Helping someone set this up
 
-# Development mode (with auto-reload)
-npm run dev [command]
+Start with `npm run setup`. It is interactive and must be run by the user in a
+real terminal — it will refuse politely if stdin is not a TTY, so do not try to
+drive it with piped input.
 
-# Build TypeScript to JavaScript
-npm run build
+Then `npm run doctor`. It is read-only, exits 0 only when everything passes, and
+every failure prints the command that fixes it. **Prefer reading doctor's output
+over reasoning about the configuration yourself** — it probes the live system.
 
-# Run production build
-npm start [command]
+If they are stuck, the usual causes in order:
 
-# Type checking
-npm run type-check
+1. **Google Cloud.** They need their own project, Gmail API enabled, a Desktop
+   app OAuth client saved as `credentials.json`, and the consent screen set to
+   **"In production"**. A project left in "Testing" has its refresh token
+   expired by Google every 7 days. The "Google hasn't verified this app"
+   interstitial is expected — Advanced → Go to (unsafe).
+2. **Model server not reachable from the driving machine.** Almost always bound
+   to loopback, or a firewall. Test from the Mac running inbox-manager, never
+   from the host.
+3. **Model emits a reasoning block.** Classifications come back as truncated
+   JSON. Doctor detects this by token count and says so.
 
-# Linting
-npm run lint
-```
+## The model server
 
-## Available Commands
+Any OpenAI-compatible server, on any OS, satisfying:
 
-- `npm run dev stats` - Show email count statistics (total, inbox, unread)
-- `npm run classify` - Classify emails without organizing (preview mode)
-- `npm run organize` - Classify and organize emails based on configuration
-- `npm run dev fix-unread` - Mark any marketing email still sitting unread as read (backfill)
+- `GET /v1/models` → `{ "data": [{ "id": "..." }] }`
+- `POST /v1/chat/completions` → `{ "choices": [{ "message": { "content": … } }] }`
+
+`LLAMA_BASE_URL` points at it; `LLAMA_MODEL` must match an id it reports.
+Common defaults: Ollama `:11434/v1`, LM Studio `:1234/v1`, llama.cpp `:8080`,
+vLLM `:8000/v1`.
+
+The `host/` directory is an optional kit for standing up an Apple Silicon MLX
+host. **It is not required.** If the user already runs a model anywhere on their
+network, skip `host/` entirely and set `LLAMA_BASE_URL`. The watchdog and
+automatic restart in `host/` are macOS/launchd-only.
+
+### Liveness is not health
+
+`GET /v1/models` is served by the HTTP thread and keeps returning 200 after the
+generation thread dies — a Metal OOM does exactly this, and launchd's
+`KeepAlive` never fires because the process never exits. A server in this state
+looks perfectly healthy and hangs every completion.
+
+So: **never treat `/v1/models` as a health check.** `LlamaClassifier.isHealthy()`
+answers "is anything listening"; `canGenerate()` answers "can it work". Recovery
+paths, doctor and `host/status.sh` all use the latter. Preserve that distinction
+in any code you add.
 
 ## Architecture
 
-### High-Level Structure
+- `src/index.ts` — command dispatch and all the orchestration
+- `src/services/gmail.ts` — Gmail API; labels, fetching, modification
+- `src/services/{classifier,gemini-classifier,llama-classifier,claude-cli-classifier}.ts`
+  — interchangeable classifiers behind one interface
+- `src/services/database.ts` — SQLite record of every classification
+- `scripts/` — `setup`, `doctor`, `auth`, `schedule` (run via tsx, not built)
+- `host/` — optional MLX model-host kit (shell, macOS)
+- `templates/` — launchd plist for the scheduled job
 
-The application follows a service-oriented architecture with three main components:
+## Invariants
 
-1. **Gmail Service** ([src/services/gmail.ts](src/services/gmail.ts))
-   - Handles OAuth2 authentication via local callback server (port 3000)
-   - Manages Gmail API operations (list, get, modify messages)
-   - Creates and manages labels (nested labels like `marketing/Amazon`)
-   - All Gmail operations use labels, not folders (Gmail's label-based system)
+**Marketing mail is always marked read.** Every path that puts a message under a
+`marketing/` label must also strip `UNREAD`: `organizeEmail`, `applyLabelOnly`
+(both honour `shouldMarkAsRead` from `labelFor`), the `merge-labels` batch move,
+and the `fix-unknown` batch move. `npm run dev fix-unread` backfills anything an
+older path missed.
 
-2. **Email Classifier** ([src/services/classifier.ts](src/services/classifier.ts) and [src/services/gemini-classifier.ts](src/services/gemini-classifier.ts))
-   - Two implementations: Claude (Anthropic) and Gemini (Google)
-   - Both implement the same `IClassifier` interface for interchangeability
-   - Claude models: Opus (most accurate), Sonnet (balanced), Haiku (fastest)
-   - Gemini models: 2.0-flash-exp (recommended, free tier), 1.5-flash, 1.5-pro
-   - Processes emails in parallel batches with concurrency limits (5 concurrent requests)
-   - Extracts structured JSON from AI responses
+**The tool never files its own mail.** Digests and failure alerts are tagged
+`inbox-manager` (`SELF_LABEL` in `src/services/gmail.ts`) at send time, and every
+inbox fetch excludes that label. Without it a digest is classified as marketing,
+marked read and archived, and the user stops seeing their own reports. Exclusion
+is by label and not by sender on purpose — notes a user mails themselves are
+ordinary mail and should still be filed.
 
-3. **Main Orchestrator** ([src/index.ts](src/index.ts))
-   - Coordinates Gmail and Classifier services
-   - Implements three command modes: stats, classify, organize
-   - Handles batch processing with configurable batch sizes
-   - Supports dry-run mode for testing
+**Requests to the model must stay bounded.** `llama-classifier.ts` sets 120s
+timeouts and passes `chat_template_kwargs: { enable_thinking: false }` on every
+call. Without the timeout a wedged host hangs a scheduled run while it holds
+`.bulk.lock`. Keep both.
 
-### Email Classification Logic
-
-The classifier prompts the AI (Claude or Gemini) to categorize emails into three types:
-
-- **Marketing**: Promotional emails, newsletters → `marketing/{companyName}` label, marked read
-- **Transactional**: Receipts, confirmations, notifications → flat `transactional` label, kept unread (one bucket to review from; the sender is visible in Gmail's From column and `company_name` is still stored in the DB)
-- **Personal**: Friend/family emails → `personal` label, kept unread
-
-Company name extraction is automatic for marketing and transactional emails.
-
-Marking marketing read is an invariant, not a per-command choice: *every* path that
-puts a message under a `marketing/` label must also strip `UNREAD`. That means
-`organizeEmail`, `applyLabelOnly` (both honour `shouldMarkAsRead` from `labelFor`),
-the `merge-labels` batch move, and the `fix-unknown` batch move. `npm run dev
-fix-unread` is the backfill that repairs any marketing mail an older path left
-unread.
-
-### Authentication Flow
-
-1. On first run, reads `credentials.json` (OAuth2 client credentials from Google Cloud Console)
-2. Launches local HTTP server on port 3000
-3. Opens browser for user authorization
-4. Receives OAuth callback and exchanges code for tokens
-5. Saves `token.json` for future authenticated requests
-6. Subsequent runs reuse `token.json`
-
-### Gmail API Label System
-
-- Gmail uses labels, not folders - moving emails means adding/removing labels
-- Removing `INBOX` label = moving out of inbox
-- Removing `UNREAD` label = marking as read
-- Nested labels use `/` separator (e.g., `marketing/Amazon`)
-- Labels are created on-demand if they don't exist
+**Nothing personal in the repo.** No email addresses, LAN IPs, home directory
+paths, host names, or keys in tracked files. Per-user values live in `.env`,
+`host/config.local.sh`, and `token.json` / `credentials.json` — all git-ignored.
+Check before committing.
 
 ## Configuration
 
-All configuration is in [.env](.env) file:
+Everything is in `.env` (see `.env.example`, which documents every key the code
+reads). `AI_PROVIDER` selects `llama` (default, local), `gemini`, `claude`, or
+`claude-cli`. `LAUNCHD_LABEL_PREFIX` names every launchd job the project
+installs and must match `LABEL_PREFIX` in `host/config.sh` on the model host —
+in-run recovery addresses the server by label.
 
-**AI Provider Selection:**
-- `AI_PROVIDER` - Choose: `claude` or `gemini` (default: `gemini`)
+## Commands
 
-**Gemini Configuration (when AI_PROVIDER=gemini):**
-- `GEMINI_API_KEY` - Required for Google AI access (get from https://aistudio.google.com/apikey)
-- `GEMINI_MODEL` - Choose: `gemini-2.0-flash-exp`, `gemini-1.5-flash`, or `gemini-1.5-pro`
+```bash
+npm run setup              # guided first run (interactive, needs a TTY)
+npm run doctor             # read-only checks; exit 0 = all pass
+npm run auth               # re-run Gmail OAuth
+npm run dev stats          # mailbox counts (read-only)
+npm run classify           # classify a batch, print results, change nothing
+npm run organize           # classify and file (honours DRY_RUN)
+npm run dev daily          # what the scheduler runs: fix-ups, bulk, digest
+npm run schedule:install   # install the launchd job
+npm run type-check         # tsc over src/ and scripts/
+npm run lint
+```
 
-**Claude Configuration (when AI_PROVIDER=claude):**
-- `ANTHROPIC_API_KEY` - Required for Claude API access
-- `CLAUDE_MODEL` - Choose: `opus`, `sonnet`, or `haiku`
+`npm run build` compiles `src/` only; `scripts/` runs through tsx and is
+excluded from the build but included in type-checking via `tsconfig.check.json`.
 
-**General Settings:**
-- `BATCH_SIZE` - Number of emails to process per run (default: 50)
-- `DRY_RUN` - Set `true` to preview without changes, `false` to actually organize
+## Testing changes
 
-Model ID mapping in [src/config.ts](src/config.ts):
-- Claude: `opus` → `claude-opus-4-5-20251101`, `sonnet` → `claude-sonnet-4-5-20250929`, `haiku` → `claude-3-5-haiku-20241022`
-- Gemini models use their full IDs directly
+There is no test suite. Verify against the real thing instead:
 
-## Required Setup Files
+- `npm run doctor` after any change to configuration or the classifier.
+- `BATCH_SIZE=5 DRY_RUN=true npm run classify` exercises the whole chain
+  without touching the mailbox.
+- For host scripts, `bash -n` for syntax and `plutil -lint` on any rendered
+  plist before loading it.
+- Never test by installing over a user's existing launchd job — render to a
+  temp path and lint it there.
 
-- `credentials.json` - OAuth2 credentials from Google Cloud Console for Gmail API (not in git)
-- `token.json` - Auto-generated after first Gmail authentication (not in git)
-- `.env` - Environment configuration (not in git, copy from `.env.example`)
+## Reference
 
-## AI Provider Strategy
-
-The codebase supports both Claude and Gemini through a unified interface:
-- Factory function `createClassifier()` in [src/index.ts](src/index.ts) returns appropriate classifier based on `AI_PROVIDER`
-- Both classifiers implement the same interface with `classify()` and `classifyBatch()` methods
-- Default is Gemini due to generous free tier (15 req/min, 1500 req/day)
-- Easy to switch providers by changing `AI_PROVIDER` in `.env`
-
-## Gmail API Scopes
-
-The application requests these scopes:
-- `https://www.googleapis.com/auth/gmail.modify` - Modify emails (labels, read status)
-- `https://www.googleapis.com/auth/gmail.labels` - Create and manage labels
+`specs/001-shareable-distribution.md` records the requirements and, more
+usefully, the incidents behind them — why particular flags, timeouts and checks
+exist. Read it before changing the host kit or the recovery paths.

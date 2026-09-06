@@ -6,6 +6,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { request } from 'undici';
+import { normalizeBaseUrl } from '../../src/services/llama-classifier.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -106,7 +107,7 @@ const COMPLETION_TIMEOUT_MS = 180_000;
 // Two questions, answered separately: is anything listening, and can it
 // actually complete? "Up but no model loaded" is a distinct failure.
 export async function probeModelHost(baseUrl: string, model?: string): Promise<HostProbe> {
-  const base = baseUrl.replace(/\/$/, '');
+  const base = normalizeBaseUrl(baseUrl);
   const probe: HostProbe = { reachable: false, models: [], completed: false };
 
   try {
@@ -161,16 +162,24 @@ export async function checkModelHost(baseUrl: string, model: string): Promise<Ch
 
   const probe = await probeModelHost(baseUrl, model);
   if (!probe.reachable) {
+    const notFound = /HTTP 404/.test(probe.error ?? '');
+    const probed = normalizeBaseUrl(baseUrl);
     return [bad('Model host',
       `Cannot reach ${baseUrl}.\n` +
-      '  · Is the host Mac awake and the server running?  host/status.sh\n' +
-      '  · Is it bound to 0.0.0.0 rather than 127.0.0.1?\n' +
-      '  · Is LLAMA_BASE_URL in .env the right address?',
+      (notFound
+        ? '  · The server answered but has no /v1/models there. Check the port,\n' +
+          '    and whether this server puts its OpenAI API under a different path.\n'
+        : '  · Is the host machine awake and the server running?\n' +
+          '  · Is it listening on the network rather than only 127.0.0.1,\n' +
+          '    and is the port open in its firewall?\n') +
+      '  · Is LLAMA_BASE_URL in .env the right address?\n' +
+      `  · Test from THIS machine, not the host:  curl ${probed}/v1/models`,
       probe.error)];
   }
   if (probe.models.length === 0) {
     return [bad('Model host',
-      'The server is up but reports no models — check that it finished loading:\n  tail -f ~/logs/mlx-server.log',
+      'The server is up but reports no models — check that it finished loading\n' +
+      'and that a model is actually loaded, in the server\'s own log.',
       `${baseUrl} answered /v1/models with an empty list`)];
   }
   results.push(ok('Model host', `${baseUrl} — ${probe.models.join(', ')}`));

@@ -147,10 +147,11 @@ const execFileAsync = promisify(execFile);
 //   · model on this Mac     → loopback base URL, restarted with launchctl
 // Unset and non-loopback means we have no way in, and say so rather than
 // pretending to recover.
+// The default is macOS/launchd — `kickstart -k` restarts even a process that is
+// running but wedged, which is the case this exists for. A non-macOS model host
+// must set LLAMA_RESTART_CMD to its own equivalent; empty disables restarts.
 function remoteStartCommand(): string {
-  // kickstart -k restarts even a process that is running but wedged, which is
-  // the case this exists for.
-  return `launchctl kickstart -k gui/$(id -u)/${config.llamaServiceLabel}`;
+  return config.llamaRestartCmd;
 }
 
 function isLoopbackHost(): boolean {
@@ -163,16 +164,21 @@ function isLoopbackHost(): boolean {
 }
 
 async function tryStartRemoteLlamaServer(): Promise<boolean> {
+  const command = remoteStartCommand();
+  if (!command) {
+    console.log('   Automatic restart is disabled (LLAMA_RESTART_CMD is empty).');
+    return false;
+  }
   if (config.llamaSshHost) {
     await execFileAsync(
       'ssh',
-      ['-o', 'ConnectTimeout=10', config.llamaSshHost, remoteStartCommand()],
+      ['-o', 'ConnectTimeout=10', config.llamaSshHost, command],
       { timeout: 30_000 }
     );
     return true;
   }
   if (isLoopbackHost()) {
-    await execFileAsync('/bin/sh', ['-c', remoteStartCommand()], { timeout: 30_000 });
+    await execFileAsync('/bin/sh', ['-c', command], { timeout: 30_000 });
     return true;
   }
   console.log(

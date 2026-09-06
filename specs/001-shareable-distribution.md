@@ -126,6 +126,18 @@ The reference host is a known-good, reproducible configuration, verified on the 
 
 ---
 
+### I. Non-macOS model hosts
+
+54. The model host shall be treated as a contract, not a product: any OS, any OpenAI-compatible server. The `host/` kit is one supported implementation, not a requirement, and the README shall say so before the setup steps rather than after them — an operator who already runs a model should not have to read a MacBook memory requirement to discover it does not apply to them.
+55. The restart command shall be configuration (`LLAMA_RESTART_CMD`), defaulting to the macOS/launchd form and settable to anything (`systemctl --user restart ollama`) or to empty to disable. Hardcoding `launchctl` made self-healing silently fail against a Linux or Windows host.
+56. The README shall list the base URLs of the servers people actually run (Ollama, LM Studio, llama.cpp, vLLM) and name the three things that break a first connection regardless of server: binding to loopback rather than the network, testing from the host instead of from the driving machine, and a model that emits a reasoning preamble.
+56a. `LLAMA_BASE_URL` shall accept a trailing `/v1`. Ollama and LM Studio both document their endpoint with that suffix, and the client appends `/v1/models` itself — so a URL copied from their docs produced `/v1/v1/models` and a 404 that read as "server unreachable". Caught 2026-09-05 testing against an Ollama-shaped stub. A 404 from `/v1/models` shall also produce a different remedy from a connection failure, since they mean different things.
+57. The docs shall state plainly which features are macOS-only and therefore inapplicable to a non-Mac host — the watchdog and automatic restart — rather than leaving an operator to discover it from a failing script.
+
+### J. Agent-readable documentation
+
+58. `CLAUDE.md` / `AGENTS.md` shall stay current with the commands, invariants and failure modes, because operators configure this repo with an AI agent reading those files as authoritative. A stale agent file is worse than none: it produces confident wrong guidance. They shall carry the invariants (marketing marked read, the tool never files its own mail, bounded model requests, nothing personal in tracked files), the liveness-is-not-health distinction, and the instruction to prefer `npm run doctor`'s live output over reasoning about configuration from source.
+
 ### H. The tool's own mail
 
 51. Mail this tool sends — daily digest, newsletter digest, failure alerts — shall be tagged with a dedicated Gmail label (`inbox-manager`) at send time, and every inbox fetch shall exclude that label. Without this the digest is classified like any other mail: marketing means marked read and archived, so the reports disappear before being read and failure alerts are lost precisely when they matter. Found 2026-09-05 by setup's own smoke test, which classified the digest sent minutes earlier as `MARKETING (The House of Douglas)` at 90% confidence.
