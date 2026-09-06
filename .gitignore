@@ -1,0 +1,36 @@
+# Dependencies / build output
+node_modules/
+dist/
+
+# Secrets and per-account credentials — never commit these
+.env
+.env.local
+.env.bak*
+credentials.json
+token.json
+
+# Mailbox data: the local classification database is your mail, not code
+*.db
+*.db-wal
+*.db-shm
+
+# Per-user runtime state
+newsletter-state.json
+.bulk.lock
+host/config.local.sh
+
+# Generated output
+logs/
+reports/
+*.log
+
+# Personal datasets and the local-only tools that read them (see specs/001)
+deal-database.json
+action-dataset.json
+src/deal-review.ts
+src/benchmark.ts
+
+# Editor / tooling local state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.DS_Store

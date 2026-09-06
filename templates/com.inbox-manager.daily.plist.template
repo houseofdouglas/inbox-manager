@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+__PROGRAM_ARGUMENTS__
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__WORKING_DIR__</string>
+
+  <key>StartCalendarInterval</key>
+  <array>
+__CALENDAR_INTERVALS__
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_PATH__</string>
+
+  <key>StandardErrorPath</key>
+  <string>__ERROR_LOG_PATH__</string>
+
+  <!-- Deliberately false: a run at load would fire every time you log in. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <!-- launchd's default PATH does not include nvm or Homebrew, so the Node
+         bin directory is spelled out here. -->
+    <key>PATH</key>
+    <string>__PATH__</string>
+  </dict>
+</dict>
+</plist>

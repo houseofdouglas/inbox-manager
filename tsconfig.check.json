@@ -1,0 +1,10 @@
+{
+  // Type-checks everything, including the scripts/ helpers, which the build
+  // config deliberately leaves out (they run through tsx, never through dist/).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}

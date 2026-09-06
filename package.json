@@ -1,0 +1,53 @@
+{
+  "name": "inbox-manager",
+  "version": "1.0.0",
+  "description": "AI-powered Gmail inbox organizer that classifies mail with a local MLX model or a hosted API",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "setup": "tsx scripts/setup.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "auth": "tsx scripts/auth.ts",
+    "schedule:install": "tsx scripts/schedule.ts install",
+    "schedule:uninstall": "tsx scripts/schedule.ts uninstall",
+    "schedule:status": "tsx scripts/schedule.ts status",
+    "classify": "tsx src/index.ts classify",
+    "organize": "tsx src/index.ts organize",
+    "newsletters": "tsx src/index.ts newsletters",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit -p tsconfig.check.json"
+  },
+  "keywords": [
+    "gmail",
+    "automation",
+    "ai",
+    "claude",
+    "gemini",
+    "email"
+  ],
+  "author": "Peter Douglas",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@google/generative-ai": "^0.21.0",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "undici": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.19",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
+    "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
