@@ -268,7 +268,7 @@ Run `npm run doctor` first — it diagnoses most of these and prints the fix.
 | Symptom | Cause and fix |
 |---|---|
 | `Cannot reach http://…:8080` | Host asleep, server not running, or bound to loopback. Run `./host/status.sh` on the host. |
-| Client hangs instead of erroring | The host Mac went to sleep with sockets open. `caffeinate` must be wrapping the server — `host/mlx-server.sh` does this. |
+| Client hangs instead of erroring | The host Mac went to sleep with sockets open. `caffeinate -ims` must be wrapping the server — `host/mlx-server.sh` does this. It keeps the system awake; the display still sleeps and locks normally. |
 | Works on the host, fails from the other Mac | Server bound to `127.0.0.1`, or you used a `.local` name. Use `--host 0.0.0.0` and the IP address. |
 | Classifications come back truncated | The model is emitting a reasoning block. Start the server with `--chat-template-args '{"enable_thinking": false}'`. |
 | Trial completion times out | Normal right after starting the server, or after a long idle — the model is paging back in. Wait a minute, re-run doctor. |

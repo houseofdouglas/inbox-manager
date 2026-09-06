@@ -4,10 +4,15 @@
 #
 # Every flag below exists because of a specific failure. Do not drop them.
 #
-# caffeinate: a Mac left to itself idle-sleeps (often after a minute). Without
-# this the machine sleeps mid-run while sockets stay open via TCPKeepAlive, so
-# the client sees hangs and timeouts against an apparently healthy server
-# rather than a clean connection refused.
+# caffeinate -ims: a Mac left to itself idle-sleeps (often after a minute).
+# Without this the machine sleeps mid-run while sockets stay open via
+# TCPKeepAlive, so the client sees hangs and timeouts against an apparently
+# healthy server rather than a clean connection refused.
+#
+# Deliberately NOT -d or -u. Those keep the display awake and assert user
+# activity, which also suppresses the screen saver and therefore the lock --
+# a headless server has no reason to sit on a lit, unlocked screen. -ims keeps
+# the system and disks awake; the display sleeps and locks on its own schedule.
 #
 # --host 0.0.0.0: mlx binds IPv4 only. Clients must connect by IP, not the
 # .local name, which intermittently resolves to IPv6-only records.
@@ -26,7 +31,7 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   exit 1
 fi
 
-exec /usr/bin/caffeinate -dimsu "$VENV_DIR/bin/python" -m mlx_lm server \
+exec /usr/bin/caffeinate -ims "$VENV_DIR/bin/python" -m mlx_lm server \
   --model "$MODEL_ID" \
   --host 0.0.0.0 \
   --port "$PORT" \

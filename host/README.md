@@ -101,7 +101,7 @@ here because of a failure that is hard to diagnose from the client side:
 
 | Flag | Without it |
 |------|-----------|
-| `caffeinate -dimsu` | The Mac idle-sleeps mid-run. Sockets stay open via TCPKeepAlive, so the client **hangs** instead of getting a clean connection refused. |
+| `caffeinate -ims` | The Mac idle-sleeps mid-run. Sockets stay open via TCPKeepAlive, so the client **hangs** instead of getting a clean connection refused. `-d`/`-u` are deliberately omitted: they would also hold the display awake and suppress the screen lock. |
 | `--host 0.0.0.0` | The server binds loopback only and is invisible from the other Mac, while working perfectly when tested locally. |
 | `--chat-template-args '{"enable_thinking": false}'` | gemma-4 emits a reasoning block first — ~255 tokens instead of ~7 — overrunning the classifier's token budget and truncating its JSON mid-object. Omitting the flag is **not** the same as setting it false. |
 
