@@ -165,6 +165,20 @@ All of it lives in `.env` — copy `.env.example` or let `npm run setup` write i
 | `DRY_RUN` | `true` = preview only | `true` |
 | `DB_PATH` | Local classification database | `inbox.db` |
 
+## The tool's own mail
+
+The digest and any failure alert are emailed to you, which means they land in
+the same inbox this tool files. Left alone, a digest gets classified as
+marketing, marked read and archived — you would stop seeing the reports, alerts
+included.
+
+So everything this tool sends is tagged `inbox-manager` the moment it is sent,
+and every inbox scan skips that label. Your reports stay in the inbox, unread,
+until you deal with them.
+
+Notes you mail to yourself are *not* exempt — they are ordinary mail and get
+filed like anything else. Only what the tool generates is skipped.
+
 ## Where your data lives
 
 Everything stays on your machine, and all of it is git-ignored:

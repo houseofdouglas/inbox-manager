@@ -2,6 +2,18 @@ import { gmail_v1 } from 'googleapis';
 import { EmailData, EmailClassification, NewsletterEmail } from '../types.js';
 import { getGmailClient } from './gmail-auth.js';
 
+// Mail this tool sends itself — daily digest, newsletter digest, failure
+// alerts — is tagged with this label the moment it is sent, and every inbox
+// fetch excludes it. Without that, a digest classified as marketing gets marked
+// read and archived, so the reports (failure alerts included) vanish before
+// being read.
+//
+// Deliberately narrower than excluding `from:me`: notes you mail yourself are
+// ordinary mail and should still be filed. Only what this tool generates is
+// exempt.
+export const SELF_LABEL = 'inbox-manager';
+const EXCLUDE_OWN_MAIL = `-label:${SELF_LABEL}`;
+
 export class GmailService {
   private gmail: gmail_v1.Gmail | null = null;
   private authedAddress: string | null = null;
@@ -142,6 +154,7 @@ export class GmailService {
     const response = await gmail.users.messages.list({
       userId: 'me',
       labelIds: ['INBOX'],
+      q: EXCLUDE_OWN_MAIL,
       maxResults,
     });
 
@@ -171,6 +184,7 @@ export class GmailService {
     const response = await gmail.users.messages.list({
       userId: 'me',
       labelIds: ['INBOX'],
+      q: EXCLUDE_OWN_MAIL,
       maxResults: pageSize,
       pageToken,
     });
@@ -561,10 +575,26 @@ export class GmailService {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    await gmail.users.messages.send({
+    const sent = await gmail.users.messages.send({
       userId: 'me',
       requestBody: { raw },
     });
+
+    // Tag it so a later run does not treat this report as ordinary mail.
+    // Best-effort: a digest that fails to get labelled is worth strictly less
+    // than the digest itself, so never fail the send over it.
+    if (sent.data.id) {
+      try {
+        const labelId = await this.ensureLabel(SELF_LABEL);
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: sent.data.id,
+          requestBody: { addLabelIds: [labelId] },
+        });
+      } catch (err) {
+        console.error(`Warning: could not tag outgoing mail with "${SELF_LABEL}":`, err);
+      }
+    }
   }
 
   async getEmailCount(): Promise<{ total: number; inbox: number; unread: number }> {

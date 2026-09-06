@@ -126,6 +126,14 @@ The reference host is a known-good, reproducible configuration, verified on the 
 
 ---
 
+### H. The tool's own mail
+
+51. Mail this tool sends — daily digest, newsletter digest, failure alerts — shall be tagged with a dedicated Gmail label (`inbox-manager`) at send time, and every inbox fetch shall exclude that label. Without this the digest is classified like any other mail: marketing means marked read and archived, so the reports disappear before being read and failure alerts are lost precisely when they matter. Found 2026-09-05 by setup's own smoke test, which classified the digest sent minutes earlier as `MARKETING (The House of Douglas)` at 90% confidence.
+52. The exclusion shall be by label, not by sender. Excluding `from:me` would also stop filing the notes a user mails themselves, which are ordinary mail; only tool-generated messages are exempt.
+53. Tagging shall be best-effort and shall never fail a send: an untagged digest is worth more than no digest. A failure to tag is logged.
+
+---
+
 ## Error States & Edge Cases
 
 | Scenario | What Happens |
