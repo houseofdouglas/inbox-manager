@@ -51,6 +51,16 @@ async function main() {
       return;
     }
 
+    // Send the digest on its own, without a classify-and-file run in front of
+    // it. --test covers a fixed 7-day window and leaves last_digest untouched,
+    // so a trial send cannot swallow the window the next real digest reports.
+    if (command === 'digest') {
+      const test = process.argv.includes('--test');
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      await sendDailyDigest(gmailService, since, { test });
+      return;
+    }
+
     if (command === 'bulk' || command === 'daily') {
       const heldBy = acquireBulkLock();
       if (heldBy !== null) {
@@ -371,11 +381,18 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 // One combined email per run: deals + who's mailing you + inbox health.
 // The window runs from the previous digest (not this run's start) so a run that
 // was skipped — laptop asleep at 8am — still gets reported in the next email.
-async function sendDailyDigest(gmailService: GmailService, runStart: string): Promise<void> {
+async function sendDailyDigest(
+  gmailService: GmailService,
+  runStart: string,
+  opts: { test?: boolean } = {},
+): Promise<void> {
   const db = new DatabaseService();
 
   const nowIso = new Date().toISOString();
-  const since = db.getMeta('last_digest') ?? runStart;
+  // A test send reports the window it was handed and does not move the
+  // bookmark, so the next scheduled digest still covers everything since the
+  // last real one.
+  const since = opts.test ? runStart : (db.getMeta('last_digest') ?? runStart);
 
   const health = db.getClassificationHealthSince(since);
   if (health.total === 0) {
@@ -384,12 +401,12 @@ async function sendDailyDigest(gmailService: GmailService, runStart: string): Pr
     return;
   }
 
-  const dealsHtml = buildDealsSection(db, since);
+  const dealsHtml = buildDealsSection(db, since, config.gmailAccountIndex);
   const companiesHtml = buildCompaniesSection(db, since);
   const flagged = db.getBuriedTransactionalCandidates(since);
 
   // Record the send up front so a mid-send crash can't re-report the same window.
-  db.setMeta('last_digest', nowIso);
+  if (!opts.test) db.setMeta('last_digest', nowIso);
   db.close();
 
   const healthHtml = buildHealthSection(health, flagged);
@@ -401,7 +418,7 @@ async function sendDailyDigest(gmailService: GmailService, runStart: string): Pr
   const bits = [`${health.total} classified`];
   if (dealsHtml.count > 0) bits.unshift(`${dealsHtml.count} deal${dealsHtml.count > 1 ? 's' : ''}`);
   if (flagged.length > 0) bits.push(`${flagged.length} to review`);
-  const subject = `📬 Inbox Digest — ${bits.join(' · ')} (${now})`;
+  const subject = `${opts.test ? '[TEST] ' : ''}📬 Inbox Digest — ${bits.join(' · ')} (${now})`;
 
   try {
     await gmailService.sendEmail(await resolveRecipient(gmailService), subject, html);
@@ -411,7 +428,21 @@ async function sendDailyDigest(gmailService: GmailService, runStart: string): Pr
   }
 }
 
-function buildDealsSection(db: DatabaseService, since: string): { html: string; count: number } {
+// Gmail permalink for one message.
+//
+// The /u/ slot takes an account index, not an address. An address there --
+// percent-encoded, so the @ arrives as %40 -- fails with Gmail's "your account
+// is temporarily unavailable", numeric code 6446, which reads like an outage
+// rather than a malformed URL. GMAIL_ACCOUNT_INDEX exists for readers whose
+// mailbox is not the first account signed in; 0 is right for most people.
+//
+// #all/ rather than #inbox/ — marketing mail is archived by the time the
+// digest goes out, so an #inbox/ link would land on nothing.
+function gmailLink(accountIndex: string, messageId: string): string {
+  return `https://mail.google.com/mail/u/${encodeURIComponent(accountIndex)}/#all/${encodeURIComponent(messageId)}`;
+}
+
+function buildDealsSection(db: DatabaseService, since: string, accountIndex: string): { html: string; count: number } {
   const currentDeals = db.getDealsExtractedSince(since);
   const history14d = db.getRecentDealHistory(since, 14);
   const history7d  = db.getRecentDealHistory(since, 7);
@@ -453,10 +484,11 @@ function buildDealsSection(db: DatabaseService, since: string): { html: string; 
       : d.discount_type === 'flat'
         ? `$${d.discount_value} off`
         : d.discount_type;
+    const href = esc(gmailLink(accountIndex, d.email_id));
     return `<tr>
-      <td style="padding:6px 12px;font-weight:bold">${esc(d.company_name)}</td>
+      <td style="padding:6px 12px;font-weight:bold"><a href="${href}" style="color:#1a73e8;text-decoration:none">${esc(d.company_name)}</a></td>
       <td style="padding:6px 12px;color:#c0392b">${esc(discount)}</td>
-      <td style="padding:6px 12px">${esc(d.description)}</td>
+      <td style="padding:6px 12px"><a href="${href}" style="color:#222;text-decoration:none">${esc(d.description)}</a></td>
     </tr>`;
   }).join('\n');
 

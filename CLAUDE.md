@@ -118,6 +118,7 @@ npm run dev stats          # mailbox counts (read-only)
 npm run classify           # classify a batch, print results, change nothing
 npm run organize           # classify and file (honours DRY_RUN)
 npm run dev daily          # what the scheduler runs: fix-ups, bulk, digest
+npm run dev digest -- --test  # send just the digest; leaves last_digest alone
 npm run schedule:install   # install the launchd job
 npm run type-check         # tsc over src/ and scripts/
 npm run lint

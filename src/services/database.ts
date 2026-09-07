@@ -171,16 +171,18 @@ export class DatabaseService {
     `).all(limit) as Array<{ company_name: string; description: string; novelty_score: number; email_subject: string; date_raw: string }>;
   }
 
-  getDealsExtractedSince(since: string): Array<{ company_name: string; discount_type: string; discount_value: number | null; description: string; email_subject: string }> {
+  // email_id is the Gmail message id, so the digest can link each deal straight
+  // back to the message it came from rather than making the reader search.
+  getDealsExtractedSince(since: string): Array<{ company_name: string; discount_type: string; discount_value: number | null; description: string; email_subject: string; email_id: string }> {
     return this.db.prepare(`
-      SELECT d.company_name, d.discount_type, d.discount_value, d.description, e.subject as email_subject
+      SELECT d.company_name, d.discount_type, d.discount_value, d.description, e.subject as email_subject, d.email_id
       FROM deals d
       JOIN emails e ON d.email_id = e.id
       WHERE d.extracted_at >= ?
       ORDER BY
         CASE d.discount_type WHEN 'percentage' THEN COALESCE(d.discount_value, 0) ELSE 0 END DESC,
         CASE d.discount_type WHEN 'flat' THEN COALESCE(d.discount_value, 0) ELSE 0 END DESC
-    `).all(since) as Array<{ company_name: string; discount_type: string; discount_value: number | null; description: string; email_subject: string }>;
+    `).all(since) as Array<{ company_name: string; discount_type: string; discount_value: number | null; description: string; email_subject: string; email_id: string }>;
   }
 
   getRecentDealHistory(before: string, days: number): Array<{ company_name: string; description: string }> {

@@ -56,6 +56,9 @@ export const config = {
   // Recipient for the daily digest and failure alerts.
   // Empty means "whichever account token.json authorized" — resolved at runtime.
   digestRecipient: process.env.DIGEST_RECIPIENT || '',
+  // Which signed-in Google account the digest's deal links open. Matches the
+  // /u/<n>/ segment Gmail shows in its own URLs.
+  gmailAccountIndex: process.env.GMAIL_ACCOUNT_INDEX || '0',
 
   // General config
   batchSize: parseInt(process.env.BATCH_SIZE || '50', 10),
