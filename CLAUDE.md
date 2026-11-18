@@ -31,8 +31,10 @@ If they are stuck, the usual causes in order:
    expired by Google every 7 days. The "Google hasn't verified this app"
    interstitial is expected — Advanced → Go to (unsafe).
 2. **Model server not reachable from the driving machine.** Almost always bound
-   to loopback, or a firewall. Test from the Mac running inbox-manager, never
-   from the host.
+   to loopback, or a firewall — or `.env` holds a raw IP that went stale when
+   the router issued a new DHCP lease. Use the host's `.local` name for both
+   `LLAMA_BASE_URL` and `LLAMA_SSH_HOST`. Test from the Mac running
+   inbox-manager, never from the host.
 3. **Model emits a reasoning block.** Classifications come back as truncated
    JSON. Doctor detects this by token count and says so.
 

@@ -41,7 +41,11 @@ else
   echo "watchdog:     NOT installed — run host/install-service.sh"
 fi
 
+# Lead with the .local name: it is what clients should use. The IP is shown
+# for debugging only -- it changes with every new DHCP lease.
+name=$(scutil --get LocalHostName 2>/dev/null || true)
+[ -n "$name" ] && echo "use address:  http://$name.local:$PORT"
 ip=$(ipconfig getifaddr en0 2>/dev/null || true)
-[ -n "$ip" ] && echo "LAN address:  http://$ip:$PORT"
+[ -n "$ip" ] && echo "current IP:   $ip  (changes with DHCP; don't put it in .env)"
 echo "log:          $LOG_PATH"
 echo "watchdog log: $WATCHDOG_LOG"

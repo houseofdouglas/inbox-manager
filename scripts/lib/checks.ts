@@ -72,8 +72,10 @@ export function checkEnvFile(): CheckResult {
   return ok('.env', 'present');
 }
 
-// A .local hostname works from the host itself and fails from anywhere else,
-// because mlx binds IPv4 only while .local can resolve to IPv6-only records.
+// .local names are accepted, and preferred over a raw IP: a DHCP lease change
+// silently breaks an IP, while the name follows the host. They used to be
+// rejected because the host kit's server listened on IPv4 only; it now
+// listens on both (--host '::' in host/mlx-server.sh).
 export function validateHostUrl(url: string): string | null {
   let parsed: URL;
   try {
@@ -82,11 +84,6 @@ export function validateHostUrl(url: string): string | null {
     return `"${url}" is not a valid URL. Expected something like http://192.168.1.50:8080`;
   }
   if (!/^https?:$/.test(parsed.protocol)) return 'The URL must start with http:// or https://';
-  if (parsed.hostname.endsWith('.local')) {
-    return `Use the host's IP address, not "${parsed.hostname}".\n` +
-           'mlx_lm binds IPv4 only, and .local names can resolve to IPv6-only\n' +
-           'records — which looks like a dead server for no visible reason.';
-  }
   return null;
 }
 

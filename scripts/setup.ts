@@ -89,8 +89,9 @@ async function step3b_modelHost(current: Record<string, string>): Promise<Record
 
   while (true) {
     if (where === 'remote') {
-      console.log(dim('\n  Use the IP address, not a .local name — see host/README.md.'));
-      const host = await ask('Host address (IP or IP:port)', url.replace(/^https?:\/\//, '') || '192.168.1.50:8080');
+      console.log(dim('\n  Prefer the host\'s .local name (System Settings → General → Sharing)\n' +
+                      '  over its IP — the IP changes whenever the router hands out a new lease.'));
+      const host = await ask('Host address (name or IP, optionally :port)', url.replace(/^https?:\/\//, '') || '192.168.1.50:8080');
       url = /^https?:\/\//.test(host) ? host : `http://${host.includes(':') ? host : `${host}:8080`}`;
     }
 
@@ -107,7 +108,7 @@ async function step3b_modelHost(current: Record<string, string>): Promise<Record
     if (!probe.reachable) {
       fail(`Cannot reach ${url}`,
         'Check that the host Mac is awake, the server is running (host/status.sh),\n' +
-        'and that it is bound to 0.0.0.0 rather than 127.0.0.1.');
+        'and that it listens on the network (--host \'::\') rather than 127.0.0.1.');
     } else if (probe.models.length === 0) {
       fail('The server is up but has no model loaded', 'Check the host log: tail -f ~/logs/mlx-server.log');
     } else {

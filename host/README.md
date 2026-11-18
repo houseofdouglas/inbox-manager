@@ -46,9 +46,11 @@ and prove it is reachable *from that Mac*, not from the host:
 curl http://192.168.1.50:8080/v1/models
 ```
 
-**Use the IP address, not a `.local` name.** `mlx_lm` binds IPv4 only, and
-`.local` names intermittently resolve to IPv6-only records — which looks like
-a dead server for no visible reason.
+**Prefer the host's `.local` name to its IP.** The IP changes whenever the
+router hands the host a new DHCP lease, and a run pointed at a stale IP looks
+exactly like a dead server. The name follows the machine. This works because
+`mlx-server.sh` listens on both IPv6 and IPv4 (`--host '::'`); `.local` names
+often resolve to IPv6 first.
 
 ## Day-to-day
 
@@ -102,7 +104,7 @@ here because of a failure that is hard to diagnose from the client side:
 | Flag | Without it |
 |------|-----------|
 | `caffeinate -ims` | The Mac idle-sleeps mid-run. Sockets stay open via TCPKeepAlive, so the client **hangs** instead of getting a clean connection refused. `-d`/`-u` are deliberately omitted: they would also hold the display awake and suppress the screen lock. |
-| `--host 0.0.0.0` | The server binds loopback only and is invisible from the other Mac, while working perfectly when tested locally. |
+| `--host '::'` | Left at the default, the server binds loopback only and is invisible from the other Mac, while working perfectly when tested locally. `::` rather than `0.0.0.0`: `0.0.0.0` is IPv4-only, so clients using the `.local` name — which often resolves to IPv6 — see a dead server. On macOS a `::` socket accepts IPv4 as well. |
 | `--chat-template-args '{"enable_thinking": false}'` | gemma-4 emits a reasoning block first — ~255 tokens instead of ~7 — overrunning the classifier's token budget and truncating its JSON mid-object. Omitting the flag is **not** the same as setting it false. |
 
 ## Naming the launchd jobs
@@ -165,7 +167,8 @@ output before trusting a substitution.
 
 | Symptom | Cause |
 |---------|-------|
-| `curl` works on the host, fails from the other Mac | Server bound to loopback, or a `.local` name resolving to IPv6. Use `--host 0.0.0.0` and the IP. |
+| `curl` works on the host, fails from the other Mac | Server bound to loopback, or bound to `0.0.0.0` (IPv4-only) while the `.local` name resolves to IPv6. Use `--host '::'`. |
+| Worked for weeks, then "unreachable" while the host is fine | `LLAMA_BASE_URL` or `LLAMA_SSH_HOST` is a raw IP and the host got a new DHCP lease. Use the `.local` name. |
 | Client hangs rather than erroring | Host went to sleep. Confirm `caffeinate` is in the process list: `pgrep -fl caffeinate`. |
 | Truncated or unparseable classifications | `enable_thinking` not set to false. |
 | `[METAL] Command buffer execution failed: Insufficient Memory` in the log | The GPU ran out of memory on a large batch. Lower `BATCH_SIZE` in inbox-manager's `.env`, close other GPU-heavy apps, or use a smaller model. The server stays up and keeps answering `/v1/models`, so this failure does *not* show up as an outage. |

@@ -167,7 +167,8 @@ function remoteStartCommand(): string {
 function isLoopbackHost(): boolean {
   try {
     const { hostname } = new URL(config.llamaBaseUrl);
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    // URL.hostname keeps the brackets on an IPv6 literal: http://[::1]:8080 -> '[::1]'.
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
   } catch {
     return false;
   }
@@ -779,17 +780,32 @@ async function bulkProcess(gmailService: GmailService) {
     process.stdout.write(`\r  [${done.toLocaleString()}/${allIds.length.toLocaleString()}] M:${stats.marketing} T:${stats.transactional} P:${stats.personal} Skip:${stats.skipped} Trash:${stats.trashed} E:${stats.errors}   `);
   };
 
-  const stopForOutage = async (done: number): Promise<never> => {
-    const message = `AI classifier endpoint unreachable after ${consecutiveConnectionErrors} consecutive failures and recovery attempts.\n\n`
+  const stopForOutage = async (done: number, preflight = false): Promise<never> => {
+    const what = preflight
+      ? 'AI classifier endpoint could not generate when the run started, and recovery failed.'
+      : `AI classifier endpoint unreachable after ${consecutiveConnectionErrors} consecutive failures and recovery attempts.`;
+    const message = `${what}\n\n`
+      + `Tried: ${config.llamaBaseUrl}${config.llamaSshHost ? ` (restart via ssh ${config.llamaSshHost})` : ''}\n`
+      + `If the host is up, check that address still reaches it — a raw IP goes stale when the router hands out a new lease. Run: npm run doctor\n\n`
       + `Processed ${done.toLocaleString()}/${allIds.length.toLocaleString()} emails before stopping (no progress lost — failed emails weren't saved).\n\n`
       + `Resume with: npm run dev bulk`;
-    console.log(`\n\n🛑 Stopping — AI classifier endpoint is unreachable after ${consecutiveConnectionErrors} consecutive failures.`);
+    console.log(`\n\n🛑 Stopping — ${what}`);
     console.log(`   Processed ${done.toLocaleString()}/${allIds.length.toLocaleString()} before stopping (no progress lost — failed emails weren't saved).`);
     console.log(`   Resume later with: npm run dev bulk\n`);
     await notifyFailure(gmailService, 'Inbox Manager: bulk run stopped', message);
     db.close();
     process.exit(1);
   };
+
+  // The chunk loop only declares an outage after MAX_CONSECUTIVE_CONNECTION_ERRORS
+  // empty chunks in a row. A run with a small backlog runs out of chunks first,
+  // so it used to finish "successfully" against a dead endpoint: every email an
+  // error, no stop, no alert -- and no digest either, since nothing was
+  // classified. The first day of each outage was silent. Check once up front
+  // so even a one-email run notices.
+  if (canRecoverEndpoint && !(await recoverClassifierEndpoint(classifier))) {
+    await stopForOutage(0, true);
+  }
 
   for (let start = 0; start < allIds.length; start += CHUNK_SIZE) {
     const chunkIds = allIds.slice(start, start + CHUNK_SIZE);

@@ -14,8 +14,13 @@
 # a headless server has no reason to sit on a lit, unlocked screen. -ims keeps
 # the system and disks awake; the display sleeps and locks on its own schedule.
 #
-# --host 0.0.0.0: mlx binds IPv4 only. Clients must connect by IP, not the
-# .local name, which intermittently resolves to IPv6-only records.
+# --host '::': listen on IPv6 AND IPv4. mlx_lm takes its address family from
+# --host, and on macOS an IPv6 socket bound to :: also accepts IPv4 (sysctl
+# net.inet6.ip6.v6only=0, which Python does not override). This is what lets
+# clients use the host's .local name. The old --host 0.0.0.0 was IPv4-only, so
+# whenever the .local name resolved to IPv6 records the server looked dead --
+# which forced clients onto a raw IP, and a raw IP breaks every time the
+# router hands the host a new DHCP lease. Do not go back to 0.0.0.0.
 #
 # --chat-template-args enable_thinking=false: gemma-4 builds otherwise emit a
 # reasoning block before the answer, costing ~255 completion tokens per
@@ -33,7 +38,7 @@ fi
 
 exec /usr/bin/caffeinate -ims "$VENV_DIR/bin/python" -m mlx_lm server \
   --model "$MODEL_ID" \
-  --host 0.0.0.0 \
+  --host '::' \
   --port "$PORT" \
   --chat-template-args '{"enable_thinking": false}' \
   --log-level INFO
