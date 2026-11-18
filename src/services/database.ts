@@ -283,16 +283,20 @@ export class DatabaseService {
   // company_name is null for most personal mail (and some transactional), so we
   // fall back to the sender address. Category case is inconsistent in older rows
   // ("Transactional" vs "transactional"), so it's normalized here.
-  getCompanyBreakdownSince(since: string): Array<{ category: string; company: string; count: number }> {
+  // senders is every distinct From header for the row, concatenated. From
+  // headers can themselves contain commas ("Doe, Jane" <j@x.com>), so callers
+  // should pull addresses out by pattern rather than split on the separator.
+  getCompanyBreakdownSince(since: string): Array<{ category: string; company: string; count: number; senders: string }> {
     return this.db.prepare(`
       SELECT LOWER(category) AS category,
              COALESCE(NULLIF(TRIM(company_name), ''), from_address) AS company,
-             COUNT(*) AS count
+             COUNT(*) AS count,
+             GROUP_CONCAT(DISTINCT from_address) AS senders
       FROM emails
       WHERE processed_at >= ?
       GROUP BY LOWER(category), company
       ORDER BY category ASC, count DESC, company ASC
-    `).all(since) as Array<{ category: string; company: string; count: number }>;
+    `).all(since) as Array<{ category: string; company: string; count: number; senders: string }>;
   }
 
   close(): void {

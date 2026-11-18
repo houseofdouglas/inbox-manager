@@ -403,7 +403,7 @@ async function sendDailyDigest(
   }
 
   const dealsHtml = buildDealsSection(db, since, config.gmailAccountIndex);
-  const companiesHtml = buildCompaniesSection(db, since);
+  const companiesHtml = buildCompaniesSection(db, since, await senderLinker(gmailService));
   const flagged = db.getBuriedTransactionalCandidates(since);
 
   // Record the send up front so a mid-send crash can't re-report the same window.
@@ -441,6 +441,54 @@ async function sendDailyDigest(
 // digest goes out, so an #inbox/ link would land on nothing.
 function gmailLink(accountIndex: string, messageId: string): string {
   return `https://mail.google.com/mail/u/${encodeURIComponent(accountIndex)}/#all/${encodeURIComponent(messageId)}`;
+}
+
+// Gmail writes these views as #label/<name> and #search/<query>, with spaces
+// as + and a label's / as %2F; matching that keeps the links identical to the
+// ones Gmail itself produces.
+function gmailLabelLink(accountIndex: string, labelName: string): string {
+  return `https://mail.google.com/mail/u/${encodeURIComponent(accountIndex)}/#label/${encodeURIComponent(labelName).replace(/%20/g, '+')}`;
+}
+
+function gmailSearchLink(accountIndex: string, query: string): string {
+  return `https://mail.google.com/mail/u/${encodeURIComponent(accountIndex)}/#search/${encodeURIComponent(query).replace(/%20/g, '+')}`;
+}
+
+type SenderLinker = (category: string, company: string, senders: string) => string | null;
+
+// Where each "Who's mailing you" row links. Marketing mail is filed under one
+// label per company, so its row opens that label -- every marketing email from
+// the company, not just this window's. Transactional and personal are flat
+// labels by design (see labelFor), so their rows search the label by sender.
+async function senderLinker(gmailService: GmailService): Promise<SenderLinker> {
+  // Resolve against the labels that exist rather than trusting the derived
+  // name: ensureLabel matches case-insensitively, so a real label can differ
+  // in case from what marketingLabelName produces. A failed lookup costs only
+  // the label links -- rows fall back to a search -- never the digest.
+  const labels = new Map<string, string>();
+  try {
+    for (const l of await gmailService.getMarketingLabels()) labels.set(l.name.toLowerCase(), l.name);
+  } catch (err) {
+    console.error('   ⚠️  Could not list marketing labels; digest links will use search instead:', err);
+  }
+  const index = config.gmailAccountIndex;
+
+  return (category, company, senders) => {
+    if (category === 'marketing') {
+      const label = labels.get(gmailService.marketingLabelName(company).toLowerCase());
+      if (label) return gmailLabelLink(index, label);
+    }
+    const addresses = [...new Set(
+      (senders.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? []).map(a => a.toLowerCase()),
+    )];
+    // Personal mail by exact address: its domain is often gmail.com, which
+    // would match everyone. Everything else by domain, since one company sends
+    // receipts, shipping and account mail from different addresses.
+    const terms = category === 'personal' ? addresses : [...new Set(addresses.map(a => a.split('@')[1]))];
+    if (terms.length === 0) return null;
+    const scope = category === 'transactional' || category === 'personal' ? `label:${category} ` : '';
+    return gmailSearchLink(index, `${scope}from:(${terms.join(' OR ')})`);
+  };
 }
 
 function buildDealsSection(db: DatabaseService, since: string, accountIndex: string): { html: string; count: number } {
@@ -517,7 +565,7 @@ function prettySender(raw: string): string {
 }
 
 // Who mailed you in this window, grouped by category then volume.
-function buildCompaniesSection(db: DatabaseService, since: string): string {
+function buildCompaniesSection(db: DatabaseService, since: string, linkFor: SenderLinker): string {
   const rows = db.getCompanyBreakdownSince(since);
   if (rows.length === 0) {
     return `<h2 style="font-family:sans-serif;margin:0 0 8px">🏢 Who's mailing you</h2>
@@ -527,11 +575,17 @@ function buildCompaniesSection(db: DatabaseService, since: string): string {
   // Rows fall back to the raw From header when there's no company name (most
   // personal mail), so labels are prettified here — which can make two rows
   // collapse to the same name, hence the merge rather than a plain push.
-  const byCategory = new Map<string, Map<string, number>>();
+  // The raw company is kept for the link: marketing labels are named from it,
+  // not from the prettified display name.
+  type Row = { count: number; company: string; senders: string[] };
+  const byCategory = new Map<string, Map<string, Row>>();
   for (const r of rows) {
-    const counts = byCategory.get(r.category) ?? new Map<string, number>();
+    const counts = byCategory.get(r.category) ?? new Map<string, Row>();
     const label = prettySender(r.company);
-    counts.set(label, (counts.get(label) ?? 0) + r.count);
+    const row = counts.get(label) ?? { count: 0, company: r.company, senders: [] };
+    row.count += r.count;
+    row.senders.push(r.senders ?? '');
+    counts.set(label, row);
     byCategory.set(r.category, counts);
   }
 
@@ -545,13 +599,19 @@ function buildCompaniesSection(db: DatabaseService, since: string): string {
 
   const blocks = categories.map(cat => {
     const list = [...byCategory.get(cat)!.entries()]
-      .map(([company, count]) => ({ company, count }))
-      .sort((a, b) => b.count - a.count || a.company.localeCompare(b.company));
+      .map(([name, row]) => ({ name, ...row }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     const emails = list.reduce((n, c) => n + c.count, 0);
-    const items = list.map(c => `<tr>
-      <td style="padding:3px 12px 3px 0">${esc(c.company)}</td>
+    const items = list.map(c => {
+      const href = linkFor(cat, c.company, c.senders.join(' '));
+      const name = href
+        ? `<a href="${esc(href)}" style="color:#1a73e8;text-decoration:none">${esc(c.name)}</a>`
+        : esc(c.name);
+      return `<tr>
+      <td style="padding:3px 12px 3px 0">${name}</td>
       <td style="padding:3px 0;text-align:right;color:#555;white-space:nowrap">${c.count}</td>
-    </tr>`).join('\n');
+    </tr>`;
+    }).join('\n');
 
     return `<div style="margin:0 0 18px">
   <div style="font-family:sans-serif;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:.04em;color:#444;margin:0 0 6px">

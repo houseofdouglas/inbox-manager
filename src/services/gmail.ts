@@ -70,6 +70,12 @@ export class GmailService {
       .trim();
   }
 
+  // The label a company's marketing mail is filed under -- the same rule
+  // labelFor applies, exposed so the digest can link to the label.
+  marketingLabelName(companyName: string): string {
+    return `marketing/${this.sanitizeLabelName(companyName)}`;
+  }
+
   async getMarketingLabels(): Promise<Array<{ id: string; name: string; companyName: string }>> {
     const gmail = this.ensureInitialized();
     const response = await gmail.users.labels.list({ userId: 'me' });
